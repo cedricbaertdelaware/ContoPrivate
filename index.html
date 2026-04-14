@@ -1313,6 +1313,11 @@ function openSettings() {
       <div class="setting-action"><button onclick="openRecurringModal()">Bekijk</button></div>
     </div>
     <div class="setting-row">
+      <div class="setting-info"><div class="setting-title">CSV bankafschrift</div><div class="setting-desc">KBC rekeninguitreksel importeren</div></div>
+      <div class="setting-action"><button onclick="document.getElementById('import-csv').click()">Upload</button></div>
+    </div>
+    <input type="file" id="import-csv" accept=".csv" style="display:none" onchange="importCSV(event)">
+    <div class="setting-row">
       <div class="setting-info"><div class="setting-title">Export data</div><div class="setting-desc">Download als JSON</div></div>
       <div class="setting-action"><button onclick="exportData()">Export</button></div>
     </div>
@@ -1433,11 +1438,145 @@ function importData(e) {
         saveState();
         renderHome();
         closeModal('modal-settings');
-        alert('Data geïmporteerd!');
       }
-    } catch(err) { alert('Ongeldig bestand'); }
+    } catch(err) {}
   };
   reader.readAsText(file);
+}
+
+// ── CSV Import (KBC bank statements) ──
+function parseCSVLine(line) {
+  const fields = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQuotes = !inQuotes; }
+    else if (c === ';' && !inQuotes) { fields.push(current.trim()); current = ''; }
+    else { current += c; }
+  }
+  fields.push(current.trim());
+  return fields;
+}
+
+// ── Auto-categorization for CSV imports ──
+function autoCategory(type, desc, counterName, freeMed, note) {
+  if (type === 'income') {
+    const all = (desc + ' ' + counterName + ' ' + freeMed).toLowerCase();
+    if (/delaware|consulting/.test(all)) return 'Loon';
+    if (/terugbetaling|ziekenfonds|helan|cm |alan insurance|medische/.test(all)) return 'Andere';
+    return 'Andere';
+  }
+
+  // Expense auto-categorization
+  const all = (desc + ' ' + counterName + ' ' + freeMed + ' ' + note).toLowerCase();
+
+  // Boodschappen
+  if (/delhaize|colruyt|aldi|lidl|carrefour|albert heijn|\bah\b|okay|spar|proxy|match|intermarche|boni/.test(all)) return 'Boodschappen';
+
+  // Eten & Drinken
+  if (/restaurant|pizza|sushi|kebab|frituur|friet|mcdon|burger|starbucks|subway|domino|quick|panos|brood|bakker|raanasia|bier|wijn|cafe|bar |drinks|drank|aperitief/.test(all)) return 'Eten & Drinken';
+
+  // Sport
+  if (/sport|fitness|gym|padel|tennis|basic.fit|jims/.test(all)) return 'Sport';
+
+  // Verzekeringen
+  if (/verzeker|insurance|polis|schuldsaldo|hospitalisatie|ziekenfonds|helan|dentalia|kbc verzeker/.test(all)) return 'Verzekeringen';
+
+  // Water/Gas/Elektriciteit
+  if (/engie|luminus|mega|bolt|fluvius|water-link|farys|pidpa|eandis|gas|elektri|energie|stroom/.test(all)) return 'Water/Gas/Elektriciteit';
+
+  // Lening
+  if (/lening|hypothe|krediet|afbetaling|woonkrediet/.test(all)) return 'Lening';
+
+  // Investeringen
+  if (/beleggen|investeer|etf|aandel|bolero|degiro|trade republic/.test(all)) return 'Investeringen';
+
+  // Transport (map to Overige since no transport category, but check common ones)
+  if (/nmbs|sncb|de lijn|mivb|stib|tec|parking|tankstation|shell|total|q8|esso|bp |uber|bolt ride/.test(all)) return 'Overige';
+
+  return 'Overige';
+}
+
+function importCSV(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const text = ev.target.result.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 2) return;
+
+    // Skip header
+    const header = parseCSVLine(lines[0]);
+    const dateIdx = header.indexOf('Datum');
+    const amountIdx = header.indexOf('Bedrag');
+    const descIdx = header.indexOf('Omschrijving');
+    const nameIdx = header.indexOf('Naam tegenpartij');
+    const freeIdx = header.indexOf('vrije mededeling');
+
+    if (dateIdx === -1 || amountIdx === -1) return;
+
+    let added = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const f = parseCSVLine(lines[i]);
+      if (f.length <= amountIdx) continue;
+
+      // Parse date DD/MM/YYYY → YYYY-MM-DD
+      const dateParts = (f[dateIdx] || '').split('/');
+      if (dateParts.length !== 3) continue;
+      const date = `${dateParts[2]}-${dateParts[1].padStart(2,'0')}-${dateParts[0].padStart(2,'0')}`;
+
+      // Parse amount (Belgian format: comma as decimal, negative = expense)
+      const rawAmount = (f[amountIdx] || '').replace(/\./g, '').replace(',', '.');
+      const amount = parseFloat(rawAmount);
+      if (isNaN(amount) || amount === 0) continue;
+
+      const type = amount >= 0 ? 'income' : 'expense';
+      const absAmount = Math.abs(amount);
+
+      // Build note from vrije mededeling or naam tegenpartij or omschrijving
+      const freeMed = freeIdx >= 0 ? (f[freeIdx] || '').replace(/^"|"$/g, '') : '';
+      const counterName = nameIdx >= 0 ? (f[nameIdx] || '') : '';
+      const desc = descIdx >= 0 ? (f[descIdx] || '').replace(/^"|"$/g, '') : '';
+
+      let note = freeMed || counterName || '';
+      // If note is empty, extract something readable from description
+      if (!note && desc) {
+        // Try to get merchant name from BANCONTACT/MAESTRO descriptions
+        const bcMatch = desc.match(/(?:BANCONTACT|MAESTRO).*?UUR\s+(.+?)\s+(?:BE|NL|FR|DE)\s*/i);
+        if (bcMatch) note = bcMatch[1];
+        else if (desc.includes('DOMICILIERING')) {
+          const schuld = desc.match(/SCHULDEISER\s*:\s*(.+?)(?:\s+REF|$)/i);
+          if (schuld) note = schuld[1];
+        }
+        else note = desc.substring(0, 60);
+      }
+      if (note.length > 80) note = note.substring(0, 77) + '...';
+
+      // Auto-categorize based on keywords
+      const category = autoCategory(type, desc, counterName, freeMed, note);
+
+      state.transactions.push({
+        id: state.nextId++,
+        type,
+        amount: absAmount,
+        category,
+        note,
+        date,
+        isRecurring: false,
+        csvImport: true
+      });
+      added++;
+    }
+
+    saveState();
+    closeModal('modal-settings');
+    renderHome();
+    // Reset file input so same file can be uploaded again
+    e.target.value = '';
+  };
+  reader.readAsText(file, 'UTF-8');
 }
 
 function resetAll() {
