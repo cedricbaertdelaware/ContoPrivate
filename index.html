@@ -448,7 +448,7 @@
   <div class="fab-container" id="fab-container">
     <div class="fab-options" id="fab-options">
       <div class="fab-option" style="transition-delay:.15s">
-        <span class="fab-option-label">Screenshot scannen</span>
+        <span class="fab-option-label">Foto importeren</span>
         <div class="fab-option-icon" onclick="fabAction('screenshot')">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="3"/><path d="M9.5 3h5"/></svg>
         </div>
@@ -471,7 +471,7 @@
     </button>
   </div>
   <input type="file" id="fab-csv-input" accept=".csv" style="display:none" onchange="importCSV(event)">
-  <input type="file" id="fab-screenshot-input" accept="image/*" capture="environment" style="display:none" onchange="importScreenshot(event)">
+  <input type="file" id="fab-screenshot-input" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style="display:none" onchange="importScreenshot(event)">
 
   <!-- Bottom Nav -->
   <div class="bottom-nav">
@@ -611,7 +611,7 @@
 <div class="modal-overlay" id="modal-screenshot">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h2>Screenshot analyse</h2>
+    <h2>Foto analyse</h2>
     <div id="screenshot-status" style="text-align:center;padding:20px 0;">
       <div style="font-size:24px;margin-bottom:8px;">🔍</div>
       <p style="color:var(--text2);font-size:14px;">Transacties worden geanalyseerd...</p>
@@ -646,7 +646,7 @@ const dbRef = db.ref('data');
 // ═══════════════════════════════════════════
 const MONTHS_NL = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
 const CAT_COLORS = [
-  '#10B981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16','#06b6d4','#e11d48'
+  '#34d399','#60a5fa','#fbbf24','#f87171','#a78bfa','#f472b6','#2dd4bf','#fb923c','#818cf8','#a3e635','#22d3ee','#fb7185','#c084fc'
 ];
 const DEFAULT_EXPENSE_CATS = ['Eten & Drinken','Boodschappen','Lening','Verzekeringen','Water/Gas/Elektriciteit','Appartement','Apotheek','Sport','Cadeau','Evenement','Investeringen','Oeps Potje','Overige'];
 const DEFAULT_INCOME_CATS = ['Loon','Bonus','Terugbetaling','Andere'];
@@ -766,7 +766,15 @@ function closeFabMenu() {
   fabOpen = false;
   document.getElementById('fab-btn').classList.remove('open');
   document.getElementById('fab-overlay').classList.remove('open');
-  document.querySelectorAll('.fab-option').forEach(o => o.classList.remove('show'));
+  const options = document.querySelectorAll('.fab-option');
+  options.forEach((o, i) => {
+    o.style.transitionDelay = (i * 0.06) + 's';
+    o.classList.remove('show');
+  });
+  // Reset delays after animation completes
+  setTimeout(() => {
+    options.forEach(o => o.style.transitionDelay = '');
+  }, 250);
 }
 
 function fabAction(action) {
@@ -1068,6 +1076,8 @@ function drawChart() {
     const allTxs = getMonthTx();
     const expTxs = allTxs.filter(t => t.type === 'expense');
     const incTxs = allTxs.filter(t => t.type === 'income');
+    const totalExp = expTxs.reduce((s,t) => s + t.amount, 0);
+    const totalInc = incTxs.reduce((s,t) => s + t.amount, 0);
 
     const buildCatData = (txs) => {
       const bycat = {};
@@ -1078,41 +1088,62 @@ function drawChart() {
     const exp = buildCatData(expTxs);
     const inc = buildCatData(incTxs);
 
-    // Replace canvas with two canvases
+    // Center text plugin
+    const centerTextPlugin = (total, color) => ({
+      id: 'centerText_' + Math.random(),
+      afterDraw(chart) {
+        const { ctx: c, chartArea: { left, right, top, bottom } } = chart;
+        const cx = (left + right) / 2;
+        const cy = (top + bottom) / 2;
+        c.save();
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.font = '500 11px "DM Sans", sans-serif';
+        c.fillStyle = '#888';
+        c.fillText('Totaal', cx, cy - 10);
+        c.font = '700 16px "DM Sans", sans-serif';
+        c.fillStyle = color;
+        c.fillText('€' + fmtK(total), cx, cy + 10);
+        c.restore();
+      }
+    });
+
     const container = ctx.parentElement;
     container.innerHTML = `
       <div style="margin-bottom:16px;">
         <div style="font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Inkomsten</div>
-        <canvas id="chart-income" style="max-height:200px;"></canvas>
+        <canvas id="chart-income" style="max-height:220px;"></canvas>
         ${inc.labels.length === 0 ? '<p style="text-align:center;color:var(--text3);font-size:13px;padding:16px 0;">Geen inkomsten</p>' : ''}
       </div>
       <div>
         <div style="font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Uitgaven</div>
-        <canvas id="chart-expense" style="max-height:200px;"></canvas>
+        <canvas id="chart-expense" style="max-height:220px;"></canvas>
         ${exp.labels.length === 0 ? '<p style="text-align:center;color:var(--text3);font-size:13px;padding:16px 0;">Geen uitgaven</p>' : ''}
       </div>
     `;
 
-    const chartOpts = {
-      responsive: true, cutout: '60%',
+    const makeOpts = (total, color) => ({
+      responsive: true, cutout: '65%',
       plugins: {
-        legend: { position:'bottom', labels: { padding:10, usePointStyle:true, pointStyleWidth:8, font:{size:11} } },
-        tooltip: { callbacks: { label: c => `€${fmt(c.raw)}` } }
+        legend: { position:'bottom', labels: { padding:10, usePointStyle:true, font:{size:11}, color:'#aaa' } },
+        tooltip: { callbacks: { label: c => { const pct = Math.round(c.raw / total * 100); return `€${fmt(c.raw)} (${pct}%)`; } } }
       }
-    };
+    });
 
     if (inc.labels.length > 0) {
       chartInstances.income = new Chart(document.getElementById('chart-income'), {
         type: 'doughnut',
-        data: { labels: inc.labels, datasets: [{ data: inc.data, backgroundColor: inc.colors, borderWidth: 0, hoverOffset: 6 }] },
-        options: chartOpts
+        data: { labels: inc.labels, datasets: [{ data: inc.data, backgroundColor: inc.colors, borderWidth: 2, borderColor: 'rgba(10,10,10,0.6)', hoverOffset: 6 }] },
+        options: makeOpts(totalInc, '#34d399'),
+        plugins: [centerTextPlugin(totalInc, '#34d399')]
       });
     }
     if (exp.labels.length > 0) {
       chartInstances.expense = new Chart(document.getElementById('chart-expense'), {
         type: 'doughnut',
-        data: { labels: exp.labels, datasets: [{ data: exp.data, backgroundColor: exp.colors, borderWidth: 0, hoverOffset: 6 }] },
-        options: chartOpts
+        data: { labels: exp.labels, datasets: [{ data: exp.data, backgroundColor: exp.colors, borderWidth: 2, borderColor: 'rgba(10,10,10,0.6)', hoverOffset: 6 }] },
+        options: makeOpts(totalExp, '#f87171'),
+        plugins: [centerTextPlugin(totalExp, '#f87171')]
       });
     }
   } else if (activeChart === 'bar') {
@@ -1142,7 +1173,7 @@ function drawChart() {
         responsive: true,
         scales: { y: { beginAtZero:true, max: yMax * 1.1, ticks:{ callback: v=>'€'+fmtK(v) }, grid:{color:'#1e1e1e'} }, x:{grid:{display:false}} },
         plugins: {
-          legend:{ labels:{ usePointStyle:true, pointStyleWidth:8, font:{size:11} } },
+          legend:{ labels:{ usePointStyle:true, font:{size:11} } },
           tooltip:{ callbacks:{ label: c => { const raw = c.dataset._raw ? c.dataset._raw[c.dataIndex] : c.raw; return `€${fmt(raw)}`; } } },
           ...(hasOutlier ? { subtitle:{ display:true, text:'✂️ Uitschieters afgekapt voor leesbaarheid', font:{size:11}, color:'#888', padding:{bottom:4} } } : {})
         }
@@ -1444,10 +1475,10 @@ function openSettings() {
     </div>
     <input type="file" id="import-csv" accept=".csv" style="display:none" onchange="importCSV(event)">
     <div class="setting-row">
-      <div class="setting-info"><div class="setting-title">Screenshot analyseren</div><div class="setting-desc">Foto van bankverrichtingen uploaden</div></div>
-      <div class="setting-action"><button onclick="document.getElementById('import-screenshot').click()">Scan</button></div>
+      <div class="setting-info"><div class="setting-title">Foto importeren</div><div class="setting-desc">Screenshot van bankverrichtingen uploaden</div></div>
+      <div class="setting-action"><button onclick="document.getElementById('import-screenshot').click()">Upload</button></div>
     </div>
-    <input type="file" id="import-screenshot" accept="image/*" capture="environment" style="display:none" onchange="importScreenshot(event)">
+    <input type="file" id="import-screenshot" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style="display:none" onchange="importScreenshot(event)">
     <div class="setting-row">
       <div class="setting-info"><div class="setting-title">Export data</div><div class="setting-desc">Download als JSON</div></div>
       <div class="setting-action"><button onclick="exportData()">Export</button></div>
@@ -2040,13 +2071,12 @@ function openCompareModal() {
   const sel1 = document.getElementById('compare-m1');
   const sel2 = document.getElementById('compare-m2');
   let opts = '';
-  for (let i = 0; i < 12; i++) {
-    for (let y = currentYear; y >= currentYear - 1; y--) {
+  for (let y = currentYear; y >= currentYear - 2; y--) {
+    for (let i = (y === currentYear ? currentMonth : 11); i >= 0; i--) {
       opts += `<option value="${i}-${y}" ${i===currentMonth&&y===currentYear?'selected':''}>${MONTHS_NL[i]} ${y}</option>`;
     }
   }
   sel1.innerHTML = opts;
-  // Default month 2 to previous month
   let pm = currentMonth - 1, py = currentYear;
   if (pm < 0) { pm = 11; py--; }
   sel2.innerHTML = opts;
