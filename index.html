@@ -1704,6 +1704,15 @@ function importCSV(e) {
       // Auto-categorize based on keywords
       const category = autoCategory(type, desc, counterName, freeMed, note);
 
+      // Duplicate detection: skip if same date + amount + type already exists
+      const isDuplicate = state.transactions.some(existing => 
+        existing.date === date && 
+        Math.abs(existing.amount - absAmount) < 0.01 && 
+        existing.type === type &&
+        existing.note === note
+      );
+      if (isDuplicate) continue;
+
       state.transactions.push({
         id: state.nextId++,
         type,
