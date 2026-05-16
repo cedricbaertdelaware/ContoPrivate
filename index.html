@@ -1772,6 +1772,28 @@ function importCSV(e) {
 
     saveState();
     closeModal('modal-settings');
+    
+    // Show summary of what was imported
+    if (added > 0) {
+      // Count per month
+      const months = {};
+      state.transactions.filter(t => t.csvImport).forEach(t => {
+        const ym = t.date.substring(0,7);
+        months[ym] = (months[ym]||0) + 1;
+      });
+      const summary = Object.entries(months).sort().map(([ym,cnt]) => {
+        const [y,m] = ym.split('-');
+        return `${MONTHS_NL[parseInt(m)-1]} ${y}: ${cnt}`;
+      }).join(', ');
+      
+      // Show a toast-style notification
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--emerald);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:500;z-index:999;font-family:DM Sans,sans-serif;max-width:90%;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+      toast.textContent = `${added} transactie${added>1?'s':''} toegevoegd`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+    
     renderHome();
     // Reset file input so same file can be uploaded again
     e.target.value = '';
