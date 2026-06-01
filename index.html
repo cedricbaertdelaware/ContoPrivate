@@ -896,10 +896,10 @@ function renderHome() {
       <button onclick="nextMonth()"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
     </div>
 
-    <div class="balance-card animate-in">
+    <div class="balance-card animate-in" style="background:linear-gradient(135deg, ${tot.balance>=0?'var(--emerald), #059669':'var(--red), #dc2626'}); box-shadow:0 4px 20px ${tot.balance>=0?'rgba(16,185,129,0.2)':'rgba(239,68,68,0.2)'};">
       <div class="overview-label">Balans</div>
       <div class="overview-value balance" style="color:${tot.balance>=0?'var(--emerald)':'var(--red)'}">
-        ${tot.balance>=0?'+':''}€${fmt(Math.abs(tot.balance))}
+        ${tot.balance>=0?'+':'-'}€${fmt(Math.abs(tot.balance))}
       </div>
     </div>
 
@@ -1322,7 +1322,7 @@ function renderYear() {
     <div style="display:flex;justify-content:space-around;margin-top:8px;">
       <div><div class="overview-label">Inkomen</div><div style="font-size:18px;font-weight:700;color:var(--emerald)">€${fmt(yearIn)}</div></div>
       <div><div class="overview-label">Uitgaven</div><div style="font-size:18px;font-weight:700;color:var(--red)">€${fmt(yearOut)}</div></div>
-      <div><div class="overview-label">Balans</div><div style="font-size:18px;font-weight:700;color:${yearBal>=0?'var(--emerald)':'var(--red)'};">${yearBal>=0?'+':''}€${fmt(Math.abs(yearBal))}</div></div>
+      <div><div class="overview-label">Balans</div><div style="font-size:18px;font-weight:700;color:${yearBal>=0?'var(--emerald)':'var(--red)'};">${yearBal>=0?'+':'-'}€${fmt(Math.abs(yearBal))}</div></div>
     </div>
   </div>`;
 
