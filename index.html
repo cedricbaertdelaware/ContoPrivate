@@ -101,11 +101,11 @@
   .overview-value.budget { color:var(--orange); }
   .balance-card {
     background:linear-gradient(135deg, var(--emerald), #059669);
-    border:none; border-radius:18px; padding:20px; margin-bottom:12px;
+    border:none; border-radius:18px; padding:14px 20px; margin-bottom:12px;
     text-align:center; box-shadow:0 4px 20px rgba(16,185,129,0.2);
   }
-  .balance-card .overview-label { margin-bottom:4px; color:rgba(255,255,255,0.7); }
-  .balance-card .overview-value { font-size:32px; color:#fff !important; }
+  .balance-card .overview-label { margin-bottom:2px; color:rgba(255,255,255,0.7); }
+  .balance-card .overview-value { font-size:26px; color:#fff !important; }
 
   .budget-item { margin-bottom:14px; }
   .budget-item:last-child { margin-bottom:0; }
@@ -290,19 +290,19 @@
   .widget-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
   .widget-card {
     background:var(--surface); border:none; border-radius:16px; padding:14px;
-    box-shadow:var(--shadow); min-height:120px;
+    box-shadow:var(--shadow); min-height:0; overflow:hidden;
   }
   .widget-card.full { grid-column:1 / -1; }
   .widget-title { font-size:13px; font-weight:600; color:var(--text2); margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
   .widget-title .badge { font-size:10px; background:var(--emerald-dim); color:var(--emerald); padding:2px 8px; border-radius:8px; font-weight:500; }
 
-  .upcoming-item { display:flex; align-items:center; gap:8px; padding:6px 0; }
+  .upcoming-item { display:flex; align-items:center; gap:6px; padding:5px 0; }
   .upcoming-item:not(:last-child) { border-bottom:1px solid var(--border); }
-  .upcoming-icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; }
+  .upcoming-icon { width:24px; height:24px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:10px; flex-shrink:0; }
   .upcoming-info { flex:1; min-width:0; }
-  .upcoming-name { font-size:12px; font-weight:500; }
-  .upcoming-date { font-size:10px; color:var(--text3); }
-  .upcoming-amount { font-size:12px; font-weight:600; }
+  .upcoming-name { font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .upcoming-date { font-size:9px; color:var(--text3); }
+  .upcoming-amount { font-size:11px; font-weight:600; flex-shrink:0; white-space:nowrap; }
 
   .top-cats-layout { display:flex; gap:12px; align-items:center; }
   .top-cats-list { flex:1; min-width:0; }
@@ -515,7 +515,9 @@ const dbRef = db.ref('data');
 // ═══════════════════════════════════════════
 const MONTHS_NL = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
 const CAT_COLORS = [
-  '#34d399','#60a5fa','#fbbf24','#f87171','#a78bfa','#f472b6','#2dd4bf','#fb923c','#818cf8','#a3e635','#22d3ee','#fb7185','#c084fc'
+  '#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899',
+  '#14b8a6','#f97316','#6366f1','#84cc16','#06b6d4','#e11d48',
+  '#d946ef','#0ea5e9','#eab308','#fb7185','#22c55e','#a855f7'
 ];
 const DEFAULT_EXPENSE_CATS = ['Eten & Drinken','Boodschappen','Lening','Verzekeringen','Water/Gas/Elektriciteit','Appartement','Apotheek','Sport','Shoppen','Cadeau','Evenement','Investeringen','Oeps Potje','Overige'];
 const DEFAULT_INCOME_CATS = ['Loon','Bonus','Terugbetaling','Andere'];
@@ -929,7 +931,7 @@ function renderHome() {
           const fixed = detectFixedCosts().filter(f => f.type === 'expense').slice(0, 3);
           if (fixed.length === 0) return '<div style="font-size:12px;color:var(--text3);padding:8px 0;">Nog geen patronen gedetecteerd</div>';
           return fixed.map(f => {
-            const label = f.note.length > 20 ? f.note.substring(0,18) + '...' : f.note;
+            const label = f.note || f.category;
             return `<div class="upcoming-item">
               <div class="upcoming-icon" style="background:${getCatColor(f.category)}20;color:${getCatColor(f.category)}">${getCatEmoji(f.category)}</div>
               <div class="upcoming-info"><div class="upcoming-name">${label}</div><div class="upcoming-date">${f.months.size} maanden</div></div>
@@ -1092,73 +1094,81 @@ function drawChart() {
     const totalExp = expTxs.reduce((s,t) => s + t.amount, 0);
     const totalInc = incTxs.reduce((s,t) => s + t.amount, 0);
 
-    const buildCatData = (txs) => {
+    const buildSorted = (txs, total) => {
       const bycat = {};
       txs.forEach(t => { bycat[t.category] = (bycat[t.category]||0) + t.amount; });
-      return { labels: Object.keys(bycat), data: Object.values(bycat), colors: Object.keys(bycat).map(l => getCatColor(l)) };
+      return Object.entries(bycat).sort((a,b) => b[1] - a[1]).map(([cat, amt]) => ({
+        cat, amt, pct: total > 0 ? Math.round((amt / total) * 100) : 0, color: getCatColor(cat)
+      }));
     };
 
-    const exp = buildCatData(expTxs);
-    const inc = buildCatData(incTxs);
+    const expSorted = buildSorted(expTxs, totalExp);
+    const incSorted = buildSorted(incTxs, totalInc);
 
-    // Center text plugin
-    const centerTextPlugin = (total, color) => ({
-      id: 'centerText_' + Math.random(),
+    const centerPlugin = (total, color) => ({
+      id: 'ct_' + Math.random(),
       afterDraw(chart) {
         const { ctx: c, chartArea: { left, right, top, bottom } } = chart;
-        const cx = (left + right) / 2;
-        const cy = (top + bottom) / 2;
-        c.save();
-        c.textAlign = 'center';
-        c.textBaseline = 'middle';
-        c.font = '500 11px "DM Sans", sans-serif';
-        c.fillStyle = '#888';
-        c.fillText('Totaal', cx, cy - 10);
-        c.font = '700 16px "DM Sans", sans-serif';
+        const cx = (left + right) / 2, cy = (top + bottom) / 2;
+        const cs = getComputedStyle(document.documentElement);
+        c.save(); c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.font = '500 10px "DM Sans"';
+        c.fillStyle = cs.getPropertyValue('--text3').trim();
+        c.fillText('Totaal', cx, cy - 9);
+        c.font = '700 14px "DM Sans"';
         c.fillStyle = color;
-        c.fillText('€' + fmtK(total), cx, cy + 10);
+        c.fillText('€' + fmtK(total), cx, cy + 9);
         c.restore();
       }
     });
 
+    const buildRows = (sorted) => sorted.map(s =>
+      `<div class="top-cat-row">
+        <div class="top-cat-dot" style="background:${s.color}"></div>
+        <div class="top-cat-name">${s.cat}</div>
+        <div class="top-cat-pct">${s.pct}%</div>
+      </div>`
+    ).join('');
+
     const container = ctx.parentElement;
+    const surfaceColor = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim();
+
     container.innerHTML = `
-      <div style="margin-bottom:16px;">
-        <div style="font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Inkomsten</div>
-        <canvas id="chart-income" style="max-height:220px;"></canvas>
-        ${inc.labels.length === 0 ? '<p style="text-align:center;color:var(--text3);font-size:13px;padding:16px 0;">Geen inkomsten</p>' : ''}
+      <div style="margin-bottom:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px;">Inkomsten</div>
+        ${incSorted.length > 0 ? `<div class="top-cats-layout">
+          <div class="top-cats-list">${buildRows(incSorted)}</div>
+          <div class="top-cats-chart"><canvas id="chart-income"></canvas></div>
+        </div>` : '<p style="text-align:center;color:var(--text3);font-size:13px;padding:12px 0;">Geen inkomsten</p>'}
       </div>
       <div>
-        <div style="font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Uitgaven</div>
-        <canvas id="chart-expense" style="max-height:220px;"></canvas>
-        ${exp.labels.length === 0 ? '<p style="text-align:center;color:var(--text3);font-size:13px;padding:16px 0;">Geen uitgaven</p>' : ''}
+        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px;">Uitgaven</div>
+        ${expSorted.length > 0 ? `<div class="top-cats-layout">
+          <div class="top-cats-list">${buildRows(expSorted)}</div>
+          <div class="top-cats-chart"><canvas id="chart-expense"></canvas></div>
+        </div>` : '<p style="text-align:center;color:var(--text3);font-size:13px;padding:12px 0;">Geen uitgaven</p>'}
       </div>
     `;
 
-    const makeOpts = (total, color) => ({
-      responsive: true, cutout: '65%',
-      plugins: {
-        legend: { position:'bottom', labels: { padding:10, usePointStyle:true, font:{size:11}, color:'#aaa' } },
-        tooltip: { callbacks: { label: c => { const pct = Math.round(c.raw / total * 100); return `€${fmt(c.raw)} (${pct}%)`; } } }
-      }
-    });
+    const makeChart = (canvasId, sorted, total, color) => {
+      const el = document.getElementById(canvasId);
+      if (!el || sorted.length === 0) return;
+      chartInstances[canvasId] = new Chart(el, {
+        type: 'doughnut',
+        data: {
+          labels: sorted.map(s => s.cat),
+          datasets: [{ data: sorted.map(s => s.amt), backgroundColor: sorted.map(s => s.color), borderWidth: 2, borderColor: surfaceColor, hoverOffset: 4 }]
+        },
+        options: {
+          responsive: true, cutout: '62%',
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => { const pct = Math.round(c.raw / total * 100); return `€${fmt(c.raw)} (${pct}%)`; } } } }
+        },
+        plugins: [centerPlugin(total, color)]
+      });
+    };
 
-    if (inc.labels.length > 0) {
-      chartInstances.income = new Chart(document.getElementById('chart-income'), {
-        type: 'doughnut',
-        data: { labels: inc.labels, datasets: [{ data: inc.data, backgroundColor: inc.colors, borderWidth: 2, borderColor: 'rgba(10,10,10,0.6)', hoverOffset: 6 }] },
-        options: makeOpts(totalInc, '#34d399'),
-        plugins: [centerTextPlugin(totalInc, '#34d399')]
-      });
-    }
-    if (exp.labels.length > 0) {
-      chartInstances.expense = new Chart(document.getElementById('chart-expense'), {
-        type: 'doughnut',
-        data: { labels: exp.labels, datasets: [{ data: exp.data, backgroundColor: exp.colors, borderWidth: 2, borderColor: 'rgba(10,10,10,0.6)', hoverOffset: 6 }] },
-        options: makeOpts(totalExp, '#f87171'),
-        plugins: [centerTextPlugin(totalExp, '#f87171')]
-      });
-    }
+    makeChart('chart-income', incSorted, totalInc, '#10b981');
+    makeChart('chart-expense', expSorted, totalExp, '#ef4444');
   } else if (activeChart === 'bar') {
     const labels = []; const incomes = []; const expenses = [];
     for (let i = 5; i >= 0; i--) {
@@ -1832,7 +1842,7 @@ function getAllCategories() {
 function getCatColor(cat) {
   const all = getAllCategories();
   const i = all.indexOf(cat);
-  return i >= 0 ? CAT_COLORS[i % CAT_COLORS.length] : '#888';
+  return i >= 0 ? CAT_COLORS[i % CAT_COLORS.length] : '#06b6d4';
 }
 
 function getCatEmoji(cat) {
