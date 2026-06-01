@@ -691,6 +691,30 @@ function getMonthTotals(txs) {
 // ═══════════════════════════════════════════
 // RENDER: HOME
 // ═══════════════════════════════════════════
+// ═══════════════════════════════════════════
+// DETECT FIXED COSTS (auto-detect recurring patterns)
+// ═══════════════════════════════════════════
+function detectFixedCosts() {
+  // Group transactions by: rounded amount + category + type
+  const groups = {};
+  state.transactions.forEach(t => {
+    const roundedAmt = Math.round(t.amount * 100) / 100;
+    // Use note (first 30 chars) + amount as key for precision, fallback to category + amount
+    const noteKey = (t.note || '').substring(0, 30).trim().toLowerCase();
+    const key = `${t.type}|${roundedAmt}|${noteKey || t.category}`;
+    if (!groups[key]) groups[key] = { type: t.type, amount: roundedAmt, category: t.category, note: t.note || t.category, months: new Set() };
+    const ym = t.date.substring(0, 7);
+    groups[key].months.add(ym);
+  });
+
+  // Filter: must appear in 2+ different months
+  const recurring = Object.values(groups)
+    .filter(g => g.months.size >= 2)
+    .sort((a, b) => b.amount - a.amount);
+
+  return recurring;
+}
+
 function renderHome() {
   const txs = getMonthTx();
   const tot = getMonthTotals(txs);
@@ -900,17 +924,19 @@ function renderHome() {
       </div>
 
       <div class="widget-card">
-        <div class="widget-title">Aankomend <span class="badge">${state.recurring.length}</span></div>
-        ${state.recurring.length > 0 ? state.recurring.slice(0,3).map(r => {
-          const sign = r.type === 'income' ? '+' : '-';
-          const cls = r.type === 'income' ? 'var(--emerald)' : 'var(--red)';
-          const day = r.day || 1;
-          return `<div class="upcoming-item">
-            <div class="upcoming-icon" style="background:${getCatColor(r.category)}20;color:${getCatColor(r.category)}">${getCatEmoji(r.category)}</div>
-            <div class="upcoming-info"><div class="upcoming-name">${r.category}</div><div class="upcoming-date">dag ${day}</div></div>
-            <div class="upcoming-amount" style="color:${cls}">${sign}€${fmt(r.amount)}</div>
-          </div>`;
-        }).join('') : '<div style="font-size:12px;color:var(--text3);padding:8px 0;">Geen terugkerende</div>'}
+        <div class="widget-title">Vaste kosten</div>
+        ${(() => {
+          const fixed = detectFixedCosts().filter(f => f.type === 'expense').slice(0, 4);
+          if (fixed.length === 0) return '<div style="font-size:12px;color:var(--text3);padding:8px 0;">Nog geen patronen gedetecteerd</div>';
+          return fixed.map(f => {
+            const label = f.note.length > 20 ? f.note.substring(0,18) + '...' : f.note;
+            return `<div class="upcoming-item">
+              <div class="upcoming-icon" style="background:${getCatColor(f.category)}20;color:${getCatColor(f.category)}">${getCatEmoji(f.category)}</div>
+              <div class="upcoming-info"><div class="upcoming-name">${label}</div><div class="upcoming-date">${f.months.size} maanden</div></div>
+              <div class="upcoming-amount" style="color:var(--red)">-€${fmt(f.amount)}</div>
+            </div>`;
+          }).join('');
+        })()}
       </div>
 
       ${tot.expense > 0 ? `<div class="widget-card">
